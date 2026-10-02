@@ -34,10 +34,6 @@ def _flow(value):
     return _decimal(value, 'flow', minimum=Decimal('-Infinity'))
 
 
-def _settings(settings):
-    return settings if isinstance(settings, VRSettings) else VRSettings.model_validate(settings)
-
-
 def _bands(v, settings):
     band = Decimal(str(settings.band))
     return v * (1 - band), v * (1 + band)
@@ -53,7 +49,7 @@ def _as_float(value):
 def initialize(capital, allocation, price, settings, qty_override=None,
                pool_override=None, v_override=None, basis='actual'):
     """Create a seed, including fees, or accept explicit migration balances."""
-    settings = _settings(settings)
+    settings = VRSettings.model_validate(settings)
     capital = _decimal(capital, 'capital', positive=True)
     allocation = _decimal(allocation, 'allocation')
     if allocation > 1:
@@ -75,7 +71,7 @@ def initialize(capital, allocation, price, settings, qty_override=None,
 
 def next_cycle(v, pool, qty, last_price, settings, flow=0, basis='actual'):
     """Apply previous Pool growth, skilled correction, then this cycle's flow."""
-    settings = _settings(settings)
+    settings = VRSettings.model_validate(settings)
     v = _decimal(v, 'v', positive=True)
     pool = _decimal(pool, 'pool')
     qty = _quantity(qty)
@@ -113,7 +109,7 @@ def next_cycle(v, pool, qty, last_price, settings, flow=0, basis='actual'):
 
 def ladder(v, qty, pool, remaining_budget, settings, max_orders=40, basis='actual'):
     """One-share reservation steps with cumulative fee-inclusive buy limits."""
-    settings = _settings(settings)
+    settings = VRSettings.model_validate(settings)
     v = _decimal(v, 'v', positive=True)
     qty = _quantity(qty)
     pool = _decimal(pool, 'pool')
@@ -150,7 +146,7 @@ def ladder(v, qty, pool, remaining_budget, settings, max_orders=40, basis='actua
 
 def close_trade(v, qty, pool, remaining_budget, price, settings, basis='adjusted_model'):
     """Apply one daily close decision; proceeds never replenish buy budget."""
-    settings = _settings(settings)
+    settings = VRSettings.model_validate(settings)
     v = _decimal(v, 'v', positive=True)
     qty = _quantity(qty)
     pool = _decimal(pool, 'pool')

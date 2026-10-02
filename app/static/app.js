@@ -110,19 +110,20 @@ async function action(form, errorId, task) {
 }
 function settingsMarkup(prefix, values = defaults, includeMode = true) {
   const fields = [
-    ["g", "G · 성장 계수", values.g, "0.000001", "any"],
-    ["band", "밴드 폭 (%)", values.band * 100, "0.000001", "any"],
-    ["fee", "거래 비용률 (%)", values.fee * 100, "0", "any"],
-    ["tick", "지정가 호가 단위", values.tick, "0.000001", "any"],
-    ["cycle_days", "회차 길이 · 달력일", values.cycle_days, "1", "1"],
+    ["g", "G · 성장 계수", values.g, "0.000001", "any", null],
+    ["band", "밴드 폭 (%)", values.band * 100, "0.000001", "any", "99.999999"],
+    ["fee", "거래 비용률 (%)", values.fee * 100, "0", "any", "99.999999"],
+    ["tick", "지정가 호가 단위", values.tick, "0.000001", "any", null],
+    ["cycle_days", "회차 길이 · 달력일", values.cycle_days, "1", "1", "365"],
     [
       "pool_usage",
       "회차 Pool 사용 한도 (%)",
       values.pool_usage * 100,
       "0",
       "any",
+      "100",
     ],
-    ["periodic_flow", "회차별 예정 입출금", values.periodic_flow, null, "any"],
+    ["periodic_flow", "회차별 예정 입출금", values.periodic_flow, null, "any", null],
   ];
   return (
     (includeMode
@@ -130,8 +131,8 @@ function settingsMarkup(prefix, values = defaults, includeMode = true) {
       : "") +
     fields
       .map(
-        ([key, label, value, min, step]) =>
-          `<label>${label}<input id="${prefix}-${key}" data-setting="${key}" type="number" value="${esc(value)}" ${min === null ? "" : `min="${min}"`} ${key === "pool_usage" ? 'max="100"' : key === "band" || key === "fee" ? 'max="99.999999"' : key === "cycle_days" ? 'max="365"' : ""} step="${step}" required></label>`,
+        ([key, label, value, min, step, max]) =>
+          `<label>${label}<input id="${prefix}-${key}" data-setting="${key}" type="number" value="${esc(value)}" ${min === null ? "" : `min="${min}"`} ${max === null ? "" : `max="${max}"`} step="${step}" required></label>`,
       )
       .join("")
   );

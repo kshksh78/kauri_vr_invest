@@ -112,7 +112,7 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
     No new funding is applied on the seed day. A quote row can carry SQLite
     snapshot_id, currency and basis_warning for reproducible metadata.
     """
-    settings = settings if isinstance(settings, VRSettings) else VRSettings.model_validate(settings)
+    settings = VRSettings.model_validate(settings)
     selected, metadata = _prepare(rows, start, end)
     anchor = selected[0]['day']
     scheduled = _scheduled_flows(flows, anchor, settings.cycle_days)
