@@ -7,9 +7,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.backtest import run_backtest
 from app.db import init_db
 from app.portfolios import PortfolioStore
 from app.prices import DEFAULT_SYMBOLS, list_symbols, read_prices, sync_prices
+from app.schemas import VRSettings
 
 
 def create_app(db_path: str | Path | None = None) -> FastAPI:
@@ -111,6 +113,25 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     @application.post("/api/prices/sync")
     def sync(data: dict):
         return sync_prices(path, data.get("symbol", ""), data.get("years", 5))
+
+    @application.post("/api/backtests")
+    def backtests(data: dict):
+        symbols = data.get("symbols", ["QLD"])
+        modes = data.get("modes", [data.get("settings", {}).get("mode", "skilled")])
+        if not isinstance(symbols, list) or not symbols or not isinstance(modes, list) or not modes:
+            raise ValueError("종목과 VR 방식 목록을 선택하세요.")
+        if len(symbols) > 20 or len(modes) > 2:
+            raise ValueError("한 번에 종목 20개·VR 방식 2개까지 비교할 수 있습니다.")
+        results = []
+        for symbol in dict.fromkeys(symbols):
+            rows = read_prices(path, symbol, data.get("start"), data.get("end"), data.get("years", 5))
+            for mode in dict.fromkeys(modes):
+                options = VRSettings.model_validate({**data.get("settings", {}), "mode": mode})
+                result = run_backtest(rows, options, data.get("capital", 15000), data.get("allocation", 0.5),
+                                      data.get("flows"), data.get("start"), data.get("end"))
+                result.update(symbol=str(symbol).upper(), mode=mode)
+                results.append(result)
+        return {"results": results}
 
     static = Path(__file__).parent / "static"
     if static.is_dir():
