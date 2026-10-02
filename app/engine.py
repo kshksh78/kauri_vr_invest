@@ -5,7 +5,7 @@ broker shares. The caller supplies that distinction in ``basis``.
 """
 
 import math
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 from app.schemas import VRSettings
 
