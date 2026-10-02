@@ -1,0 +1,11 @@
+{
+  "name": "kauri-vr-invest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:browser": "node tests/browser.spec.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
