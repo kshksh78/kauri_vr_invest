@@ -1,0 +1,14 @@
+[project]
+name = "kauri-vr-invest"
+version = "1.0.0"
+requires-python = ">=3.12"
+description = "Local Basic and Skilled VR portfolio service"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
