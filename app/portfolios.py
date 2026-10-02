@@ -152,7 +152,8 @@ def replay(document):
     account["cycles"] = results
     account["state"] = state
     account["pending_flows"] = [event for event in events if event["kind"] == "flow"
-                                and event["effective_date"] > state["cycle_start"]]
+                                and (event["effective_date"] > state["cycle_start"]
+                                     or (state["waiting"] and event["effective_date"] == state["cycle_start"]))]
     account["orders"] = ({"buy": [], "sell": []} if state["waiting"] else ladder(
         state["v"], qty, pool, state["remaining_budget"], cycles[-1]["settings"]))
     return account

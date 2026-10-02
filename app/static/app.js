@@ -42,6 +42,8 @@ let account = null,
   eventId = null,
   results = [],
   toastTimer;
+let accountSelection = 0,
+  valuationGeneration = 0;
 function remember(key, value) {
   try {
     localStorage.setItem(`vr.${key}`, JSON.stringify(value));
@@ -210,20 +212,34 @@ function renderAccounts() {
       .join("");
 }
 async function loadAccounts() {
-  portfolios = await api("/api/portfolios");
+  const selection = accountSelection;
+  const loaded = await api("/api/portfolios");
+  if (selection !== accountSelection) return;
+  portfolios = loaded;
   const selected = recall("account", null);
   account = portfolios.find((p) => p.id === selected) || portfolios[0] || null;
   renderAccounts();
   renderAccount();
 }
-function applyAccount(value) {
-  account = value;
+function applyAccount(value, select = false, selection = accountSelection) {
   const index = portfolios.findIndex((p) => p.id === value.id);
+  if (index >= 0 && portfolios[index].revision > value.revision) return false;
   if (index < 0) portfolios.push(value);
   else portfolios[index] = value;
+  if (!select && (selection !== accountSelection || account?.id !== value.id)) {
+    renderAccounts();
+    return false;
+  }
+  if (select) accountSelection++;
+  account = value;
   remember("account", value.id);
   renderAccounts();
   renderAccount();
+  return true;
+}
+async function requestAccount(path, method = "GET", data) {
+  const selection = accountSelection;
+  return applyAccount(await api(path, method, data), false, selection);
 }
 function addDays(day, amount) {
   const date = new Date(`${day}T12:00:00Z`);
@@ -274,7 +290,10 @@ function renderAccount() {
   $("account-empty").hidden = exists;
   $("account-content").hidden = !exists;
   $("reload-account").disabled = !exists;
-  if (!exists) return;
+  if (!exists) {
+    valuationGeneration++;
+    return;
+  }
   const state = account.state,
     cycle = account.cycles.at(-1);
   $("account-name").textContent = account.name;
@@ -392,8 +411,13 @@ function renderOrders() {
     `${account.currency} 기준 · 각 주문은 1주 · ${clipped ? "각 방향 최대 40단계 표시" : "회차 잔여 한도 내 주문만 표시"} · 한 주 미만의 밴드 차이는 정수 수량으로 남을 수 있습니다.`;
 }
 async function updateValuation() {
+  const generation = ++valuationGeneration;
   const current = account;
   if (!current) return;
+  const isCurrent = () =>
+    generation === valuationGeneration &&
+    account?.id === current.id &&
+    account?.revision === current.revision;
   const coverage = prices.find((p) => p.symbol === current.symbol);
   $("latest-valuation").textContent = coverage
     ? `가격 DB 최근 종가일: ${coverage.last_date} (${coverage.currency || "통화 미확인"})`
@@ -403,7 +427,7 @@ async function updateValuation() {
     const rows = await api(
       `/api/prices/${encodeURIComponent(current.symbol)}?start=${coverage.last_date}&end=${coverage.last_date}`,
     );
-    if (account?.id !== current.id) return;
+    if (!isCurrent()) return;
     const row = rows.at(-1);
     if (!row) return;
     if (row.currency !== current.currency) {
@@ -414,6 +438,7 @@ async function updateValuation() {
     $("latest-valuation").textContent =
       `${row.date} 실제 종가 ${num(row.close)} ${row.currency} · 장부 수량 기준 총자산 ${money(current.state.qty * row.close + current.state.pool, current.currency)}. 과거 분할이 장부에 반영되었는지 확인하세요.`;
   } catch (e) {
+    if (!isCurrent()) return;
     $("latest-valuation").textContent = `가격 평가액 조회: ${e.message}`;
   }
 }
@@ -736,6 +761,7 @@ $("close-create").addEventListener(
   () => ($("create-panel").hidden = true),
 );
 $("account-select").addEventListener("change", () => {
+  accountSelection++;
   account = portfolios.find((p) => p.id === $("account-select").value) || null;
   remember("account", account?.id || null);
   cancelEvent();
@@ -744,8 +770,7 @@ $("account-select").addEventListener("change", () => {
 $("reload-account").addEventListener("click", async () => {
   if (!account) return;
   try {
-    applyAccount(await api(`/api/portfolios/${account.id}`));
-    cancelEvent();
+    if (await requestAccount(`/api/portfolios/${account.id}`)) cancelEvent();
     toast("최신 장부를 다시 불러왔습니다.");
   } catch (e) {
     showMessage("global-error", e.message);
@@ -778,7 +803,7 @@ $("create-form").addEventListener("submit", (event) => {
     ])
       if (form[key] != null && form[key] !== "") data[key] = Number(form[key]);
     const value = await api("/api/portfolios", "POST", data);
-    applyAccount(value);
+    applyAccount(value, true);
     $("create-panel").hidden = true;
     cancelEvent();
     toast("운용 계좌가 저장되었습니다.");
@@ -799,15 +824,14 @@ $("event-form").addEventListener("submit", (event) => {
     for (const key of ["qty", "price", "fee", "amount", "ratio"])
       if (form[key] !== undefined && form[key] !== "")
         data[key] = Number(form[key]) / (key === "fee" ? 100 : 1);
+    if (["buy", "sell"].includes(form.kind) && form.fee === "") data.fee = null;
     const suffix = eventId ? `/${eventId}` : "";
-    applyAccount(
-      await api(
-        `/api/portfolios/${account.id}/events${suffix}`,
-        eventId ? "PATCH" : "POST",
-        data,
-      ),
+    const applied = await requestAccount(
+      `/api/portfolios/${account.id}/events${suffix}`,
+      eventId ? "PATCH" : "POST",
+      data,
     );
-    cancelEvent();
+    if (applied) cancelEvent();
     toast("장부가 저장되었습니다.");
   });
 });
@@ -832,13 +856,12 @@ $("ledger-body").addEventListener("click", async (event) => {
   if (remove) {
     remove.disabled = true;
     try {
-      const updated = await api(
+      const applied = await requestAccount(
         `/api/portfolios/${account.id}/events/${remove.dataset.delete}`,
         "DELETE",
         { revision: account.revision },
       );
-      applyAccount(updated);
-      if (eventId === remove.dataset.delete) cancelEvent();
+      if (applied && eventId === remove.dataset.delete) cancelEvent();
       toast("기록을 삭제하고 장부를 다시 계산했습니다.");
     } catch (error) {
       showMessage("event-error", error.message);
@@ -850,32 +873,37 @@ $("settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   showMessage("settings-success", "");
   action(event.currentTarget, "settings-error", async () => {
-    applyAccount(
-      await api(`/api/portfolios/${account.id}/settings`, "PATCH", {
+    const applied = await requestAccount(
+      `/api/portfolios/${account.id}/settings`,
+      "PATCH",
+      {
         settings: readSettings("account-settings"),
         revision: account.revision,
-      }),
+      },
     );
-    showMessage(
-      "settings-success",
-      "다음 회차 기본값을 저장했습니다. 현재 확정 회차는 유지됩니다.",
-    );
+    if (applied)
+      showMessage(
+        "settings-success",
+        "다음 회차 기본값을 저장했습니다. 현재 확정 회차는 유지됩니다.",
+      );
   });
 });
 $("next-form").addEventListener("submit", (event) => {
   event.preventDefault();
   action(event.currentTarget, "next-error", async () => {
     const form = readNamed($("next-form"));
-    applyAccount(
-      await api(`/api/portfolios/${account.id}/cycles`, "POST", {
+    const applied = await requestAccount(
+      `/api/portfolios/${account.id}/cycles`,
+      "POST",
+      {
         start: form.start,
         previous_close: form.previous_close
           ? Number(form.previous_close)
           : null,
         revision: account.revision,
-      }),
+      },
     );
-    $("next-close").value = "";
+    if (applied) $("next-close").value = "";
     toast("다음 회차가 시작되었습니다.");
   });
 });
@@ -892,12 +920,10 @@ $("cycle-form").addEventListener("submit", (event) => {
       data.previous_close = $("cycle-close").value
         ? Number($("cycle-close").value)
         : null;
-    applyAccount(
-      await api(
-        `/api/portfolios/${account.id}/cycles/${cycleId}`,
-        "PATCH",
-        data,
-      ),
+    await requestAccount(
+      `/api/portfolios/${account.id}/cycles/${cycleId}`,
+      "PATCH",
+      data,
     );
     toast("회차와 장부를 다시 계산하여 저장했습니다.");
   });

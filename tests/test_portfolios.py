@@ -143,3 +143,17 @@ def test_pending_close_resolves_and_valid_event_delete(tmp_path):
     account = store.advance(account["id"], {"start": "2026-01-16"}, account["revision"])
     account = store.edit_cycle(account["id"], account["cycles"][-1]["id"], {"previous_close": 80}, account["revision"])
     assert account["state"]["v"] == 7925.62
+
+
+def test_waiting_cycle_keeps_unapplied_flow_visible_until_close(tmp_path):
+    store = PortfolioStore(tmp_path / "ledger.db")
+    account = create(store)
+    account = store.add_event(account["id"], {"date": "2026-01-05", "kind": "flow", "amount": 5000}, account["revision"])
+    account = store.advance(account["id"], {"start": "2026-01-16"}, account["revision"])
+    assert account["state"]["waiting"] is True
+    assert account["state"]["net_contributions"] == 15000
+    assert sum(event["amount"] for event in account["pending_flows"]) == 5000
+    account = store.edit_cycle(account["id"], account["cycles"][-1]["id"], {"previous_close": 100}, account["revision"])
+    assert account["pending_flows"] == []
+    assert account["state"]["net_contributions"] == 20000
+    assert account["state"]["pool"] == pytest.approx(12596.3)

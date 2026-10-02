@@ -89,6 +89,7 @@ try {
     .locator("#account-name")
     .filter({ hasText: "추가 종목 AAPL 검증" })
     .waitFor();
+  const otherAccountId = await page.locator("#account-select").inputValue();
   await page.reload();
   await page
     .locator("#account-name")
@@ -115,6 +116,27 @@ try {
   assert.match(
     await page.locator("#seed-values").textContent(),
     /초기 매수 비용0\.00 USD/,
+  );
+  await page.locator("#event-kind").selectOption("buy");
+  await page.locator("#event-date").fill("2026-01-05");
+  await page.locator("#event-qty").fill("1");
+  await page.locator("#event-price").fill("100");
+  await page.locator("#event-fee").fill("1");
+  await page.getByRole("button", { name: "장부에 기록", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector("#metric-pool").textContent === "4,899.00",
+  );
+  await page.getByRole("button", { name: "수정", exact: true }).first().click();
+  await page.locator("#event-fee").fill("");
+  await page.getByRole("button", { name: "변경 저장", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector("#metric-pool").textContent === "4,899.95",
+    null,
+    { timeout: 3000 },
+  );
+  await page.getByRole("button", { name: "삭제", exact: true }).first().click();
+  await page.waitForFunction(
+    () => document.querySelector("#metric-pool").textContent === "5,000.00",
   );
   for (const [date, amount] of [
     ["2026-01-05", "2000"],
@@ -159,6 +181,92 @@ try {
     .filter({ hasText: "기존 보유 반복 증액 검증" })
     .waitFor();
   assert.equal(await page.locator("#metric-pool").innerText(), "10,000.00");
+  const activeAccountId = await page.locator("#account-select").inputValue();
+  let releaseAccount, accountRequestStarted;
+  const accountGate = new Promise((resolve) => {
+    releaseAccount = resolve;
+  });
+  const accountStarted = new Promise((resolve) => {
+    accountRequestStarted = resolve;
+  });
+  const accountRoute = `**/api/portfolios/${activeAccountId}`;
+  await page.route(accountRoute, async (route) => {
+    const response = await route.fetch();
+    accountRequestStarted();
+    await accountGate;
+    await route.fulfill({ response });
+  });
+  const delayedAccount = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/portfolios/${activeAccountId}`),
+  );
+  await page.locator("#reload-account").click();
+  await accountStarted;
+  await page.locator("#account-select").selectOption(otherAccountId);
+  await page.locator("#event-kind").selectOption("flow");
+  await page.locator("#event-amount").fill("777");
+  releaseAccount();
+  await (await delayedAccount).finished();
+  await page
+    .locator("#toast")
+    .filter({ hasText: "다시 불러왔습니다" })
+    .waitFor();
+  assert.equal(
+    await page.locator("#account-select").inputValue(),
+    otherAccountId,
+  );
+  assert.equal(await page.locator("#event-amount").inputValue(), "777");
+  await page.unroute(accountRoute);
+  await page.locator("#account-select").selectOption(activeAccountId);
+  await page
+    .locator("#latest-valuation")
+    .filter({ hasText: "19,000.00 USD" })
+    .waitFor();
+  let releaseQuote, quoteRequestStarted;
+  const quoteGate = new Promise((resolve) => {
+    releaseQuote = resolve;
+  });
+  const quoteStarted = new Promise((resolve) => {
+    quoteRequestStarted = resolve;
+  });
+  let quoteRequests = 0;
+  const quoteRoute = "**/api/prices/QLD?*";
+  await page.route(quoteRoute, async (route) => {
+    if (++quoteRequests !== 1) return route.continue();
+    const response = await route.fetch();
+    quoteRequestStarted();
+    await quoteGate;
+    await route.fulfill({ response });
+  });
+  await page.locator("#reload-account").click();
+  await quoteStarted;
+  await page.locator("#event-kind").selectOption("cost");
+  await page.locator("#event-date").fill("2026-01-16");
+  await page.locator("#event-amount").fill("100");
+  await page.getByRole("button", { name: "장부에 기록", exact: true }).click();
+  await page
+    .locator("#latest-valuation")
+    .filter({ hasText: "18,900.00 USD" })
+    .waitFor();
+  const delayedQuote = page.waitForResponse((response) =>
+    response.url().includes("/api/prices/QLD?"),
+  );
+  releaseQuote();
+  await (await delayedQuote).finished();
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  assert.match(
+    await page.locator("#latest-valuation").innerText(),
+    /18,900\.00 USD/,
+  );
+  await page.unroute(quoteRoute);
+  await page.getByRole("button", { name: "삭제", exact: true }).last().click();
+  await page.waitForFunction(
+    () => document.querySelector("#metric-pool").textContent === "10,000.00",
+  );
   await page.getByRole("button", { name: "가격 데이터", exact: true }).click();
   await page.route("**/api/prices/sync", async (route) =>
     route.fulfill({

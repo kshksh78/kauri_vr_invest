@@ -141,3 +141,26 @@ def test_later_flow_is_explicitly_unapplied_not_counted_as_capital():
     assert result['summary']['net_contributions'] == 15000
     assert result['metadata']['unapplied_flows'] == [
         {'date': '2026-02-01', 'amount': 5000, 'cycle_boundary': '2026-02-13'}]
+
+
+def test_flows_before_and_on_delayed_actual_cycle_opening_apply_together():
+    rows = prices(['2026-06-05', '2026-06-18', '2026-06-22', '2026-07-06'])
+    result = run_backtest(rows, VRSettings(fee=0, periodic_flow=100, band=.99),
+                          flows=[{'date': '2026-06-20', 'amount': 2000},
+                                 {'date': '2026-06-22', 'amount': 3000},
+                                 {'date': '2026-06-23', 'amount': 1000}])
+    assert [row['flow'] for row in result['daily']] == [0, 0, 5000, 1000]
+    assert result['daily'][2]['flow_requested_dates'] == ['2026-06-20', '2026-06-22']
+    assert result['summary']['net_contributions'] == 21000
+    assert result['summary']['twr'] == 0
+
+
+def test_deposit_on_price_rise_uses_current_pre_flow_market_value():
+    rows = [{'date': day, 'adj_close': price} for day, price in
+            [('2026-01-02', 100), ('2026-01-15', 100), ('2026-01-16', 110), ('2026-01-30', 121)]]
+    result = run_backtest(rows, VRSettings(mode='skilled', fee=0, band=.99),
+                          initial_holdings={'qty': 75, 'pool': 7500},
+                          flows=[{'date': '2026-01-16', 'amount': 5000}])
+    assert result['daily'][2]['twr'] == pytest.approx(.05)
+    assert result['summary']['equity'] == 21575
+    assert result['summary']['twr'] == pytest.approx(21575 / (15000 + 5000 / 1.05) - 1)

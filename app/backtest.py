@@ -100,7 +100,7 @@ def _scheduled_flows(flows, anchor, cycle_days):
         boundary = anchor + timedelta(days=cycle * cycle_days)
         scheduled.append({'requested_date': day.isoformat(), 'boundary': boundary,
                           'amount': amount})
-    return sorted(scheduled, key=lambda flow: flow['boundary'])
+    return sorted(scheduled, key=lambda flow: flow['requested_date'])
 
 
 def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
@@ -151,7 +151,7 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
                      'cash_delta': -seed['initial_cost'], 'initial': True} if qty and not existing else None
         else:
             if calendar_cycle > current_cycle:
-                while pending < len(scheduled) and scheduled[pending]['boundary'] <= day:
+                while pending < len(scheduled) and scheduled[pending]['requested_date'] <= day.isoformat():
                     applied.append(scheduled[pending])
                     pending += 1
                 flow = sum(item['amount'] for item in applied) if applied else settings.periodic_flow

@@ -13,4 +13,6 @@ def test_health_and_local_boundary(tmp_path):
     assert client.get("/api/health", headers={"host": "testserver"}).status_code == 400
     assert client.post("/api/missing").status_code == 403
     assert client.post("/api/missing", headers={"origin": "https://attacker.example"}).status_code == 403
+    assert client.post("/api/health", headers={"origin": "https://attacker.example", "x-vr-request": "1"}).status_code == 403
+    assert client.post("/api/health", headers={"origin": "http://localhost:9999", "x-vr-request": "1"}).status_code == 403
     assert client.post("/api/health", headers={"origin": "http://localhost", "x-vr-request": "1"}).status_code == 405
