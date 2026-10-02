@@ -1,0 +1,16 @@
+[Unit]
+Description=Kauri VR Investment Local Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kauri/hobby/kauri_vr_invest_service
+Environment=VR_DB_PATH=/home/kauri/hobby/kauri_vr_invest_service/runtime/vr.sqlite3
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/kauri/hobby/kauri_vr_invest_service/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
