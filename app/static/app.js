@@ -123,7 +123,14 @@ function settingsMarkup(prefix, values = defaults, includeMode = true) {
       "any",
       "100",
     ],
-    ["periodic_flow", "회차별 예정 입출금", values.periodic_flow, null, "any", null],
+    [
+      "periodic_flow",
+      "회차별 예정 입출금",
+      values.periodic_flow,
+      null,
+      "any",
+      null,
+    ],
   ];
   return (
     (includeMode
@@ -230,6 +237,38 @@ function keyValues(id, items) {
     .map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`)
     .join("");
 }
+function renderInitialization(prefix) {
+  const existing =
+    $(`${prefix}-initialization-mode`).value === "existing_holdings";
+  document.querySelectorAll(`[data-${prefix}-purchase]`).forEach((label) => {
+    label.hidden = existing;
+    label.querySelector("input").disabled = existing;
+  });
+  const fields = $(`${prefix}-existing-fields`);
+  fields.hidden = !existing;
+  fields.querySelectorAll("input").forEach((input) => {
+    input.disabled = !existing;
+    input.required =
+      existing && [`${prefix}-qty`, `${prefix}-pool`].includes(input.id);
+  });
+  if (prefix === "create") {
+    $("create-price-label").textContent = existing
+      ? "시작일 기준 평가가격"
+      : "실제 초기 체결가";
+    $("create-price").placeholder = existing
+      ? "시작일 실제 가격 입력"
+      : "증권사 체결가 입력";
+    renderOpeningEquity();
+  }
+}
+function renderOpeningEquity() {
+  const inputs = ["create-qty", "create-price", "create-pool"].map(
+    (id) => $(id).value,
+  );
+  $("create-opening-equity").textContent = inputs.every((value) => value !== "")
+    ? `시작 자산: ${money(Number(inputs[0]) * Number(inputs[1]) + Number(inputs[2]), $("create-currency").value.toUpperCase())} · 초기 매수 비용 0`
+    : "보유 수량, 시작일 평가가격, 현금 Pool을 입력하면 시작 자산을 계산합니다.";
+}
 function renderAccount() {
   const exists = !!account;
   $("account-empty").hidden = exists;
@@ -270,6 +309,14 @@ function renderAccount() {
             .join("\n")
       : "",
   );
+  const pendingAmount = account.pending_flows.reduce(
+    (sum, event) => sum + event.amount,
+    0,
+  );
+  showMessage(
+    "funding-summary",
+    `시작 자산 기준: ${money(account.seed.capital)} · 반영된 순증액: ${money(state.net_contributions - account.seed.capital)}\n누적 순투입금: ${money(state.net_contributions)} · 미반영 순입출금: ${money(pendingAmount)}\n미반영 자금은 현재 Pool과 순투입금에 포함되지 않습니다. 다음 회차 확정 시 반영합니다.`,
+  );
   renderOrders();
   const labels = {
     initial_v: "초기 V",
@@ -287,14 +334,31 @@ function renderAccount() {
       .filter(([key]) => labels[key])
       .map(([key, value]) => [labels[key], money(value)]),
   );
+  const existing = account.seed.initialization_mode === "existing_holdings";
   keyValues("seed-values", [
     ["시작일", account.seed.start],
-    ["초기 투자금", money(account.seed.capital)],
-    ["초기 매수 비중", pct(account.seed.allocation)],
-    ["초기 체결가", money(account.seed.price)],
+    [
+      "시작 방식",
+      existing ? "기존 주식과 현금으로 시작" : "새 투자금으로 초기 매수",
+    ],
+    [
+      existing ? "시작일 평가 자산" : "초기 투자금",
+      money(account.seed.capital),
+    ],
+    [
+      existing ? "시작 주식 비중" : "초기 매수 비중",
+      pct(account.seed.allocation),
+    ],
+    [existing ? "시작일 평가가격" : "초기 체결가", money(account.seed.price)],
     ["초기 수량", `${account.seed.qty}주`],
     ["초기 Pool", money(account.seed.pool)],
     ["초기 V", money(account.seed.v)],
+    ["초기 매수 비용", money(account.seed.initial_fee)],
+    ...(account.seed.holding_cost_basis == null
+      ? []
+      : [
+          ["기존 주식 취득원가 · 참고", money(account.seed.holding_cost_basis)],
+        ]),
   ]);
   $("revision-label").textContent = `저장 버전 ${account.revision}`;
   renderLedger();
@@ -460,8 +524,18 @@ function backtestPayload() {
     years: Number(data.years),
     ...(data.start ? { start: data.start } : {}),
     ...(data.end ? { end: data.end } : {}),
-    capital: Number(data.capital),
-    allocation: Number(data.allocation) / 100,
+    ...(data.initialization_mode === "existing_holdings"
+      ? {
+          initial_holdings: {
+            qty: Number(data.initial_qty),
+            pool: Number(data.initial_pool),
+            ...(data.initial_v ? { v: Number(data.initial_v) } : {}),
+          },
+        }
+      : {
+          capital: Number(data.capital),
+          allocation: Number(data.allocation) / 100,
+        }),
     settings: readSettings("bt-settings"),
     flows,
   };
@@ -475,8 +549,14 @@ function restoreBacktest() {
     "bt-years": data.years,
     "bt-start": data.start || "",
     "bt-end": data.end || "",
-    "bt-capital": data.capital,
-    "bt-allocation": data.allocation * 100,
+    "bt-capital": data.capital ?? 15000,
+    "bt-allocation": (data.allocation ?? 0.5) * 100,
+    "bt-initialization-mode": data.initial_holdings
+      ? "existing_holdings"
+      : "new_purchase",
+    "bt-qty": data.initial_holdings?.qty ?? "",
+    "bt-pool": data.initial_holdings?.pool ?? "",
+    "bt-v": data.initial_holdings?.v ?? "",
     "bt-flows": data.flows.map((f) => `${f.date}, ${f.amount}`).join("\n"),
   }))
     $(id).value = value;
@@ -494,18 +574,41 @@ const colors = [
   "#805baa",
 ];
 function renderChart() {
+  const currencies = [...new Set(results.map((r) => r.metadata.currency))];
+  const comparable = currencies.length === 1 && !!currencies[0];
+  $("chart-metric").querySelector('option[value="equity"]').disabled =
+    !comparable;
+  if (!comparable) $("chart-metric").value = "twr";
+  const metric = $("chart-metric").value;
+  const equity = metric === "equity";
+  const description = equity
+    ? `날짜별 총자산 ${currencies[0]}`
+    : "날짜별 입출금 제외 수익률 TWR";
+  $("performance-chart").setAttribute("aria-label", description);
+  $("chart-note").textContent = equity
+    ? `금액 단위: ${currencies[0]}. 총자산에는 추가 입출금이 포함됩니다. 운용 수익률은 TWR로 비교하세요.`
+    : "TWR는 입출금 효과를 제거한 성과입니다." +
+      (!comparable
+        ? " 통화가 다르거나 확인되지 않아 총자산 비교를 사용할 수 없습니다."
+        : "");
   const w = Math.max(280, $("performance-chart").clientWidth),
     h = 310,
-    left = 58,
+    left = equity ? 75 : 58,
     right = 20,
     top = 20,
     bottom = 40;
   const dates = results.flatMap((r) => r.daily.map((d) => Date.parse(d.date)));
   const lowDate = Math.min(...dates),
     highDate = Math.max(...dates);
-  let low = Math.min(0, ...results.flatMap((r) => r.daily.map((d) => d.twr))),
-    high = Math.max(0, ...results.flatMap((r) => r.daily.map((d) => d.twr)));
-  const margin = Math.max(0.01, (high - low) * 0.12);
+  let low = Math.min(
+      0,
+      ...results.flatMap((r) => r.daily.map((d) => d[metric])),
+    ),
+    high = Math.max(
+      0,
+      ...results.flatMap((r) => r.daily.map((d) => d[metric])),
+    );
+  const margin = Math.max(equity ? 1 : 0.01, (high - low) * 0.12);
   low -= margin;
   high += margin;
   const x = (d) =>
@@ -514,11 +617,11 @@ function renderChart() {
       (w - left - right);
   const y = (value) =>
     top + ((high - value) / (high - low)) * (h - top - bottom);
-  let svg = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="날짜별 입출금 제외 수익률 TWR"><title>VR 방식별 TWR 수익률</title>`;
+  let svg = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(description)}"><title>${esc(description)}</title>`;
   for (let i = 0; i <= 4; i++) {
     const value = low + ((high - low) * i) / 4,
       yy = y(value);
-    svg += `<line x1="${left}" y1="${yy}" x2="${w - right}" y2="${yy}" stroke="#e7ece3"/><text x="${left - 10}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#849184">${esc(pct(value))}</text>`;
+    svg += `<line x1="${left}" y1="${yy}" x2="${w - right}" y2="${yy}" stroke="#e7ece3"/><text x="${left - 10}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#849184">${esc(equity ? num(value, 0) : pct(value))}</text>`;
   }
   for (const [index, result] of results.entries()) {
     const samples = result.daily.filter(
@@ -526,7 +629,7 @@ function renderChart() {
         i % Math.max(1, Math.floor(result.daily.length / 1000)) === 0 ||
         i === result.daily.length - 1,
     );
-    svg += `<path d="${samples.map((d, i) => `${i ? "L" : "M"}${x(d.date).toFixed(2)},${y(d.twr).toFixed(2)}`).join(" ")}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4"/>`;
+    svg += `<path d="${samples.map((d, i) => `${i ? "L" : "M"}${x(d.date).toFixed(2)},${y(d[metric]).toFixed(2)}`).join(" ")}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4"/>`;
   }
   svg += `<text x="${left}" y="${h - 10}" fill="#849184" font-size="11">${new Date(lowDate).toISOString().slice(0, 10)}</text><text x="${w - right}" y="${h - 10}" fill="#849184" font-size="11" text-anchor="end">${new Date(highDate).toISOString().slice(0, 10)}</text></svg>`;
   $("performance-chart").innerHTML = svg;
@@ -657,13 +760,23 @@ $("create-form").addEventListener("submit", (event) => {
       symbol: form.symbol.trim().toUpperCase(),
       currency: form.currency.trim().toUpperCase(),
       start: form.start,
-      capital: Number(form.capital),
-      allocation: Number(form.allocation) / 100,
+      initialization_mode: form.initialization_mode,
+      ...(form.initialization_mode === "new_purchase"
+        ? {
+            capital: Number(form.capital),
+            allocation: Number(form.allocation) / 100,
+          }
+        : {}),
       price: Number(form.price),
       settings: readSettings("create-settings"),
     };
-    for (const key of ["qty_override", "pool_override", "v_override"])
-      if (form[key] !== "") data[key] = Number(form[key]);
+    for (const key of [
+      "qty_override",
+      "pool_override",
+      "v_override",
+      "holding_cost_basis",
+    ])
+      if (form[key] != null && form[key] !== "") data[key] = Number(form[key]);
     const value = await api("/api/portfolios", "POST", data);
     applyAccount(value);
     $("create-panel").hidden = true;
@@ -842,10 +955,24 @@ $("backtest-form").addEventListener("submit", (event) => {
   });
 });
 $("result-select").addEventListener("change", renderDaily);
+$("chart-metric").addEventListener("change", renderChart);
 $("download-csv").addEventListener("click", downloadCsv);
+for (const prefix of ["create", "bt"])
+  $(`${prefix}-initialization-mode`).addEventListener("change", () =>
+    renderInitialization(prefix),
+  );
+for (const id of [
+  "create-qty",
+  "create-price",
+  "create-pool",
+  "create-currency",
+])
+  $(id).addEventListener("input", renderOpeningEquity);
 setSettings("create-settings", "create", defaults);
 renderEventFields();
 restoreBacktest();
+renderInitialization("create");
+renderInitialization("bt");
 switchTab(recall("tab", "operations"));
 (async () => {
   try {

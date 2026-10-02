@@ -36,3 +36,22 @@ def test_backtest_api_same_price_different_modes(tmp_path):
     for result in response.json()["results"]:
         assert result["summary"]["twr"] == 0
         assert result["summary"]["equity"] == 20000
+
+
+def test_existing_holdings_contract_through_api(tmp_path):
+    path = tmp_path / "api.db"
+    save_snapshot(path, "QLD", [{"date": "2026-01-02", "close": 80, "adj_close": 80}],
+                  provider="yahoo", source="fixture")
+    client = TestClient(create_app(path), base_url="http://localhost", headers={"x-vr-request": "1"})
+    response = client.post("/api/portfolios", json={"symbol": "QLD", "start": "2026-01-02", "price": 80,
+                           "initialization_mode": "existing_holdings", "qty_override": 100, "pool_override": 7000})
+    assert response.status_code == 201
+    assert response.json()["seed"]["capital"] == 15000
+    assert response.json()["seed"]["initial_fee"] == 0
+    response = client.post("/api/backtests", json={"symbols": ["QLD"], "start": "2026-01-02",
+                           "end": "2026-01-02", "initial_holdings": {"qty": 100, "pool": 7000}})
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["daily"][0]["trade"] is None
+    assert result["summary"]["equity"] == 15000
+    assert result["summary"]["twr"] == 0

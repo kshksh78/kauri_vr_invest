@@ -305,6 +305,14 @@ p {
 .panel-heading p {
   margin: 5px 0 0;
 }
+.chart-control {
+  flex: 0 1 240px;
+}
+.funding-example {
+  padding: 12px 14px;
+  background: #f3f6ee;
+  border-radius: 8px;
+}
 .muted {
   color: var(--muted);
   font-size: 12px;

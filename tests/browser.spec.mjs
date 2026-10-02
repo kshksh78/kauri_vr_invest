@@ -94,6 +94,71 @@ try {
     .locator("#account-name")
     .filter({ hasText: "추가 종목 AAPL 검증" })
     .waitFor();
+  await page.getByRole("button", { name: "새 계좌", exact: true }).click();
+  await page.locator("#create-name").fill("기존 보유 반복 증액 검증");
+  await page.locator("#create-symbol").fill("QLD");
+  await page
+    .locator("#create-initialization-mode")
+    .selectOption("existing_holdings");
+  await page.locator("#create-price").fill("100");
+  await page.locator("#create-start").fill("2026-01-02");
+  await page.locator("#create-qty").fill("100");
+  await page.locator("#create-pool").fill("5000");
+  await page.locator("#create-periodic_flow").fill("100");
+  await page.getByRole("button", { name: "계좌 만들기", exact: true }).click();
+  await page
+    .locator("#account-name")
+    .filter({ hasText: "기존 보유 반복 증액 검증" })
+    .waitFor();
+  assert.equal(await page.locator("#metric-qty").innerText(), "100");
+  assert.equal(await page.locator("#metric-pool").innerText(), "5,000.00");
+  assert.match(
+    await page.locator("#seed-values").textContent(),
+    /초기 매수 비용0\.00 USD/,
+  );
+  for (const [date, amount] of [
+    ["2026-01-05", "2000"],
+    ["2026-01-12", "3000"],
+  ]) {
+    await page.locator("#event-kind").selectOption("flow");
+    await page.locator("#event-date").fill(date);
+    await page.locator("#event-amount").fill(amount);
+    const saved = page.waitForResponse(
+      (r) => r.url().includes("/events") && r.request().method() === "POST",
+    );
+    await page
+      .getByRole("button", { name: "장부에 기록", exact: true })
+      .click();
+    assert.equal((await saved).status(), 201);
+    await page
+      .locator("#ledger-body")
+      .filter({ hasText: Number(amount).toLocaleString("ko-KR") })
+      .waitFor();
+  }
+  assert.equal(await page.locator("#metric-pool").innerText(), "5,000.00");
+  assert.match(
+    await page.locator("#funding-summary").innerText(),
+    /미반영 순입출금: 5,000\.00 USD/,
+  );
+  await page.locator("#next-start").fill("2026-01-16");
+  await page.locator("#next-close").fill("100");
+  await page
+    .getByRole("button", { name: "다음 회차 시작", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => document.querySelector("#metric-pool").textContent === "10,000.00",
+  );
+  assert.equal(await page.locator("#metric-v").innerText(), "15,500.00");
+  assert.match(
+    await page.locator("#funding-summary").innerText(),
+    /누적 순투입금: 20,000\.00 USD/,
+  );
+  await page.reload();
+  await page
+    .locator("#account-name")
+    .filter({ hasText: "기존 보유 반복 증액 검증" })
+    .waitFor();
+  assert.equal(await page.locator("#metric-pool").innerText(), "10,000.00");
   await page.getByRole("button", { name: "가격 데이터", exact: true }).click();
   await page.route("**/api/prices/sync", async (route) =>
     route.fulfill({
@@ -157,12 +222,35 @@ try {
     (old) => document.querySelector("#results-summary").innerText !== old,
     before,
   );
+  await page
+    .locator("#bt-initialization-mode")
+    .selectOption("existing_holdings");
+  await page.locator("#bt-qty").fill("100");
+  await page.locator("#bt-pool").fill("5000");
+  await page.locator("#bt-flows").fill("2026-01-05, 2000\n2026-01-12, 3000");
+  const existingResult = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/backtests") && r.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "백테스트 실행", exact: true })
+    .click();
+  const existingData = await (await existingResult).json();
+  assert.equal(existingData.results[0].daily[0].trade, null);
+  assert.equal(existingData.results[0].daily[0].equity, 15000);
+  await page.locator("#chart-metric").selectOption("equity");
+  await page
+    .locator('#performance-chart svg[aria-label="날짜별 총자산 USD"]')
+    .waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(
-    () => document.querySelector("#performance-chart svg").viewBox.baseVal.width < 400,
+    () =>
+      document.querySelector("#performance-chart svg").viewBox.baseVal.width <
+      400,
     null,
     { timeout: 3000 },
   );
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
   assert.ok(
     await page.evaluate(
@@ -172,7 +260,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: account, persistence, flow edit/delete, invalid rollback, waiting/resolution, sync error, comparative backtest, option effects, desktop/mobile, no console errors",
+    "PASS: account, persistence, flow edit/delete, invalid rollback, waiting/resolution, existing holdings without fees, repeated funding and planned override, sync error, comparative/existing backtest, equity chart, option effects, desktop/mobile, no console errors",
   );
 } finally {
   await browser.close();
