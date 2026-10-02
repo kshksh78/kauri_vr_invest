@@ -128,7 +128,8 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
             for mode in dict.fromkeys(modes):
                 options = VRSettings.model_validate({**data.get("settings", {}), "mode": mode})
                 result = run_backtest(rows, options, data.get("capital", 15000), data.get("allocation", 0.5),
-                                      data.get("flows"), data.get("start"), data.get("end"))
+                                      data.get("flows"), data.get("start"), data.get("end"),
+                                      initial_holdings=data.get("initial_holdings"))
                 result.update(symbol=str(symbol).upper(), mode=mode)
                 results.append(result)
         return {"results": results}

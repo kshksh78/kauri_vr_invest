@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from uuid import uuid4
 
 from app.db import connect, init_db
-from app.engine import initialize, ladder, next_cycle
+from app.engine import initialize, initialize_existing, ladder, next_cycle
 from app.prices import DEFAULT_SYMBOLS, validate_symbol
 from app.schemas import VRSettings
 
@@ -175,17 +175,31 @@ class PortfolioStore:
         if date.fromisoformat(start).weekday() >= 5:
             raise ValueError("시작일은 거래일을 입력하세요.")
         settings = VRSettings.model_validate(data.get("settings", {})).model_dump()
-        capital = number(data.get("capital", 15000), "초기 자산", positive=True)
-        allocation = number(data.get("allocation", 0.5), "초기 매수 비율")
-        price = number(data.get("price"), "초기 체결가", positive=True)
-        initial = initialize(capital, allocation, price, settings, data.get("qty_override"),
-                             data.get("pool_override"), data.get("v_override"))
+        price = number(data.get("price"), "시작 기준 가격", positive=True)
+        migration = data.get("qty_override") is not None and data.get("pool_override") is not None
+        mode = data.get("initialization_mode", "existing_holdings" if migration else "new_purchase")
+        if mode == "existing_holdings":
+            if not migration:
+                raise ValueError("기존 보유 시작에는 실제 수량과 Pool을 모두 입력하세요.")
+            initial = initialize_existing(data["qty_override"], data["pool_override"], price,
+                                          settings, data.get("v_override"))
+            capital = initial["opening_equity"]
+            allocation = initial["qty"] * price / capital
+        elif mode == "new_purchase":
+            capital = number(data.get("capital", 15000), "초기 자산", positive=True)
+            allocation = number(data.get("allocation", 0.5), "초기 매수 비율")
+            initial = initialize(capital, allocation, price, settings, data.get("qty_override"),
+                                 data.get("pool_override"), data.get("v_override"))
+            if data.get("pool_override") is not None or data.get("qty_override") is not None:
+                capital = initial["qty"] * price + initial["pool"] + initial["initial_fee"]
+            initial["initialization_mode"] = mode
+        else:
+            raise ValueError("시작 방식은 new_purchase 또는 existing_holdings입니다.")
+        if data.get("holding_cost_basis") is not None:
+            initial["holding_cost_basis"] = number(data["holding_cost_basis"], "기존 주식 취득원가")
         name = str(data.get("name", f"{symbol} VR")).strip()
         if not name or len(name) > 100:
             raise ValueError("계좌명은 1~100자입니다.")
-        # Migration balances define actual initial assets rather than fictitious funding.
-        if data.get("pool_override") is not None or data.get("qty_override") is not None:
-            capital = initial["qty"] * price + initial["pool"] + initial["initial_fee"]
         document = {"id": uuid4().hex, "name": name, "symbol": symbol, "currency": currency, "revision": 1,
                     "seed": {"start": start, "capital": capital, "allocation": allocation, "price": price, **initial},
                     "settings": settings, "events": [], "cycles": [

@@ -8,6 +8,47 @@ def create(store):
                          "allocation": 0.5, "price": 100, "settings": {"mode": "skilled", "g": 10}})
 
 
+def test_existing_holdings_no_phantom_buy_or_fee(tmp_path):
+    store = PortfolioStore(tmp_path / "existing.db")
+    account = store.create({"symbol": "QLD", "initialization_mode": "existing_holdings", "start": "2026-01-02",
+                            "price": 80, "qty_override": 100, "pool_override": 7000,
+                            "holding_cost_basis": 9500, "settings": {"mode": "skilled"}})
+    assert account["seed"]["capital"] == 15000
+    assert account["seed"]["initial_fee"] == 0
+    assert account["seed"]["initial_cost"] == 0
+    assert account["seed"]["holding_cost_basis"] == 9500
+    assert account["state"]["v"] == 8000
+    assert account["state"]["pool"] == 7000
+    assert account["events"] == []
+
+
+def test_multiple_topups_existing_holdings_and_planned_override(tmp_path):
+    store = PortfolioStore(tmp_path / "existing.db")
+    account = store.create({"symbol": "QLD", "initialization_mode": "existing_holdings", "start": "2026-01-02",
+                            "price": 80, "qty_override": 100, "pool_override": 7000,
+                            "settings": {"mode": "skilled", "periodic_flow": 100}})
+    for day, amount in [("2026-01-05", 2000), ("2026-01-12", 3000), ("2026-01-20", 2500)]:
+        account = store.add_event(account["id"], {"kind": "flow", "date": day, "amount": amount}, account["revision"])
+    assert account["state"]["pool"] == 7000
+    account = store.advance(account["id"], {"start": "2026-01-16", "previous_close": 80}, account["revision"])
+    assert account["state"]["flow"] == 5000
+    assert account["state"]["v"] == 13700
+    assert account["state"]["pool"] == 12000
+    assert account["state"]["net_contributions"] == 20000
+    account = store.advance(account["id"], {"start": "2026-01-30", "previous_close": 80}, account["revision"])
+    assert account["state"]["flow"] == 2500
+    assert account["state"]["v"] == 16498.75
+    assert account["state"]["pool"] == 14500
+    assert account["state"]["net_contributions"] == 22500
+    assert PortfolioStore(store.path).get(account["id"])["state"] == account["state"]
+
+
+def test_existing_mode_requires_actual_qty_and_cash(tmp_path):
+    with pytest.raises(ValueError, match="수량|Pool"):
+        PortfolioStore(tmp_path / "existing.db").create({"symbol": "QLD", "initialization_mode": "existing_holdings",
+                                                        "start": "2026-01-02", "price": 80})
+
+
 def test_deposit_once_snapshots_and_restart(tmp_path):
     path = tmp_path / "ledger.db"
     store = PortfolioStore(path)

@@ -6,6 +6,21 @@ from app.backtest import run_backtest
 from app.schemas import VRSettings
 
 
+def test_existing_units_multiple_flows_have_zero_return_at_flat_price():
+    rows = [{"date": day, "adj_close": 80, "currency": "USD"}
+            for day in ["2026-01-02", "2026-01-05", "2026-01-12", "2026-01-16", "2026-01-20", "2026-01-30"]]
+    result = run_backtest(rows, {"mode": "skilled", "fee": 0, "periodic_flow": 100},
+                          initial_holdings={"qty": 100, "pool": 7000},
+                          flows=[{"date": "2026-01-05", "amount": 2000}, {"date": "2026-01-12", "amount": 3000},
+                                 {"date": "2026-01-20", "amount": 2500}])
+    assert result["daily"][0]["trade"] is None
+    assert result["daily"][0]["equity"] == 15000
+    assert result["summary"]["equity"] == 22500
+    assert result["summary"]["net_contributions"] == 22500
+    assert result["summary"]["twr"] == 0
+    assert result["summary"]["mdd"] == 0
+
+
 def prices(days, value=100, **metadata):
     return [{'date': day, 'adj_close': value, **metadata} for day in days]
 

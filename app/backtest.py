@@ -6,7 +6,7 @@ Adjusted model quantities are deliberately distinct from broker share counts.
 import math
 from datetime import date, timedelta
 
-from app.engine import close_trade, initialize, next_cycle
+from app.engine import close_trade, initialize, initialize_existing, next_cycle
 from app.schemas import VRSettings
 
 
@@ -104,7 +104,7 @@ def _scheduled_flows(flows, anchor, cycle_days):
 
 
 def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
-                 start=None, end=None):
+                 start=None, end=None, initial_holdings=None):
     """Return daily states and TWR; explicit flows replace that cycle's plan.
 
     ``flows`` is a list of {date, amount}. Each date shifts to the first
@@ -116,7 +116,18 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
     selected, metadata = _prepare(rows, start, end)
     anchor = selected[0]['day']
     scheduled = _scheduled_flows(flows, anchor, settings.cycle_days)
-    seed = initialize(capital, allocation, selected[0]['price'], settings, basis='adjusted_model')
+    existing = initial_holdings is not None
+    if existing:
+        if not isinstance(initial_holdings, dict) or not {'qty', 'pool'} <= initial_holdings.keys():
+            raise ValueError('기존 보유 시작에는 모형 수량과 Pool이 필요합니다.')
+        seed = initialize_existing(initial_holdings['qty'], initial_holdings['pool'],
+                                   selected[0]['price'], settings, initial_holdings.get('v'),
+                                   basis='adjusted_model')
+        capital = seed['opening_equity']
+    else:
+        seed = initialize(capital, allocation, selected[0]['price'], settings, basis='adjusted_model')
+    metadata.update(initialization_mode='existing_holdings' if existing else 'new_purchase',
+                    initial_equity=capital)
     qty, pool, v = seed['qty'], seed['pool'], seed['v']
     remaining = pool * settings.pool_usage
     units = _number(capital, 'capital')
@@ -124,7 +135,7 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
     peak = 1.0
     mdd = 0.0
     total_fees = seed['initial_fee']
-    trade_count = 1 if qty else 0
+    trade_count = 1 if qty and not existing else 0
     current_cycle = 0
     previous_price = selected[0]['price']
     daily = []
@@ -137,7 +148,7 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
         if index == 0:
             trade = {'side': 'buy', 'qty': qty, 'price': price,
                      'gross': qty * price, 'fee': seed['initial_fee'],
-                     'cash_delta': -seed['initial_cost'], 'initial': True} if qty else None
+                     'cash_delta': -seed['initial_cost'], 'initial': True} if qty and not existing else None
         else:
             if calendar_cycle > current_cycle:
                 while pending < len(scheduled) and scheduled[pending]['boundary'] <= day:
@@ -203,7 +214,9 @@ def run_backtest(rows, settings, capital=15000, allocation=0.5, flows=None,
                 '수정종가와 모형 수량을 사용하며 실제 증권사 보유 주수와 다릅니다.',
                 '수정종가에 반영된 배당을 현금 Pool에 다시 더하지 않습니다.',
                 '현재 일별 종가로만 매매를 판단하며 장중 예약주문 체결을 재현하지 않습니다.',
-                '초기 매수일에는 추가 밴드 거래를 하지 않고 다음 거래일부터 판단합니다.',
+                '시작일에는 추가 밴드 거래를 하지 않고 다음 거래일부터 판단합니다.',
+                ('기존 보유 시작은 첫 수정종가 × 모형 수량 + Pool을 성과 기준으로 삼고 과거 매수·비용을 재현하지 않습니다.'
+                 if existing else '신규 매수 시작은 초기 투자금에서 매수금과 비용을 차감합니다.'),
                 '회차는 첫 실제 거래일 기준 달력일이며 직전 실제 종가로 새 V를 계산합니다.',
                 '입출금은 다음 회차의 첫 실제 거래일 매매 전에 반영하며 해당 회차 예정 정기액을 대체합니다.',
                 'TWR와 MDD는 입출금을 제거한 성과 단위가치로 계산하고 초기 매수 비용도 반영합니다.',

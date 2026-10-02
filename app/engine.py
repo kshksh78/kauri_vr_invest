@@ -69,6 +69,20 @@ def initialize(capital, allocation, price, settings, qty_override=None,
             'initial_fee': _as_float(initial_fee), 'basis': basis}
 
 
+def initialize_existing(qty, pool, price, settings, v_override=None, basis='actual'):
+    """Open VR from already owned balances without inventing a purchase."""
+    VRSettings.model_validate(settings)
+    qty = _quantity(qty)
+    pool = _decimal(pool, 'Pool')
+    price = _decimal(price, '시작 평가가격', positive=True)
+    position = qty * price
+    equity = _decimal(position + pool, '시작 평가자산', positive=True)
+    v = _decimal(v_override if v_override is not None else position, '초기 V', positive=True)
+    return {'qty': qty, 'pool': _as_float(pool), 'v': _as_float(v),
+            'initial_cost': 0.0, 'initial_fee': 0.0, 'basis': basis,
+            'opening_equity': _as_float(equity), 'initialization_mode': 'existing_holdings'}
+
+
 def next_cycle(v, pool, qty, last_price, settings, flow=0, basis='actual'):
     """Apply previous Pool growth, skilled correction, then this cycle's flow."""
     settings = VRSettings.model_validate(settings)
