@@ -5,6 +5,11 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.db import init_db
+from app.portfolios import PortfolioStore
+from app.prices import DEFAULT_SYMBOLS, list_symbols, read_prices, sync_prices
 
 
 def create_app(db_path: str | Path | None = None) -> FastAPI:
@@ -12,8 +17,19 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as con:
         con.execute("PRAGMA user_version")
+    init_db(path)
+    store = PortfolioStore(path)
     application = FastAPI(title="VR 투자", version="1.0.0")
     application.state.db_path = path
+
+    @application.exception_handler(ValueError)
+    async def invalid_input(request: Request, exc: ValueError):
+        status = 409 if "revision 충돌" in str(exc) else 422
+        return JSONResponse({"detail": str(exc)}, status_code=status)
+
+    @application.exception_handler(KeyError)
+    async def missing_object(request: Request, exc: KeyError):
+        return JSONResponse({"detail": str(exc).strip("'")}, status_code=404)
 
     @application.middleware("http")
     async def local_boundary(request: Request, call_next):
@@ -32,6 +48,73 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
         with sqlite3.connect(path) as con:
             con.execute("SELECT 1")
         return {"version": "1.0.0", "database": "ready", "sqlite_version": sqlite3.sqlite_version}
+
+    @application.get("/api/config")
+    def config():
+        return {"default_symbols": DEFAULT_SYMBOLS, "default_years": 5, "max_years": 10,
+                "default_start": "2026-10-02", "port": 8787}
+
+    @application.get("/api/portfolios")
+    def portfolios():
+        return store.list()
+
+    @application.post("/api/portfolios", status_code=201)
+    def create_portfolio(data: dict):
+        currency = next((item.get("currency") for item in list_symbols(path)
+                         if item["symbol"] == str(data.get("symbol", "QLD")).upper()), None)
+        if currency and str(data.get("currency") or currency).upper() != currency:
+            raise ValueError(f"가격 DB 통화 {currency}와 계좌 통화가 다릅니다.")
+        if currency and not data.get("currency"):
+            data["currency"] = currency
+        return store.create(data)
+
+    @application.get("/api/portfolios/{key}")
+    def portfolio(key: str):
+        return store.get(key)
+
+    @application.patch("/api/portfolios/{key}/settings")
+    def settings(key: str, data: dict):
+        return store.update_settings(key, data.get("settings", {}), data.get("revision"))
+
+    @application.post("/api/portfolios/{key}/events", status_code=201)
+    def event(key: str, data: dict):
+        revision = data.pop("revision", None)
+        return store.add_event(key, data, revision)
+
+    @application.patch("/api/portfolios/{key}/events/{event_id}")
+    def edit_event(key: str, event_id: str, data: dict):
+        revision = data.pop("revision", None)
+        return store.edit_event(key, event_id, data, revision)
+
+    @application.delete("/api/portfolios/{key}/events/{event_id}")
+    def delete_event(key: str, event_id: str, data: dict):
+        return store.delete_event(key, event_id, data.get("revision"))
+
+    @application.post("/api/portfolios/{key}/cycles", status_code=201)
+    def cycle(key: str, data: dict):
+        revision = data.pop("revision", None)
+        return store.advance(key, data, revision)
+
+    @application.patch("/api/portfolios/{key}/cycles/{cycle_id}")
+    def edit_cycle(key: str, cycle_id: str, data: dict):
+        revision = data.pop("revision", None)
+        return store.edit_cycle(key, cycle_id, data, revision)
+
+    @application.get("/api/prices")
+    def price_coverage():
+        return list_symbols(path)
+
+    @application.get("/api/prices/{symbol}")
+    def prices(symbol: str, start: str | None = None, end: str | None = None, years: int = 5):
+        return read_prices(path, symbol, start, end, years)
+
+    @application.post("/api/prices/sync")
+    def sync(data: dict):
+        return sync_prices(path, data.get("symbol", ""), data.get("years", 5))
+
+    static = Path(__file__).parent / "static"
+    if static.is_dir():
+        application.mount("/", StaticFiles(directory=static, html=True), name="web")
 
     return application
 
