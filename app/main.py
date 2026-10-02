@@ -18,7 +18,7 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     @application.middleware("http")
     async def local_boundary(request: Request, call_next):
         host = request.headers.get("host", "")
-        if urlsplit("http://" + host).hostname not in {"localhost", "127.0.0.1", "::1", "testserver"}:
+        if urlsplit("http://" + host).hostname not in {"localhost", "127.0.0.1", "::1"}:
             return JSONResponse({"detail": "로컬 주소로 접속해 주세요."}, status_code=400)
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")

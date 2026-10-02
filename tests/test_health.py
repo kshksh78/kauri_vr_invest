@@ -10,5 +10,7 @@ def test_health_and_local_boundary(tmp_path):
     assert response.json()["database"] == "ready"
     assert response.json()["version"]
     assert client.get("/api/health", headers={"host": "attacker.example"}).status_code == 400
+    assert client.get("/api/health", headers={"host": "testserver"}).status_code == 400
+    assert client.post("/api/missing").status_code == 403
     assert client.post("/api/missing", headers={"origin": "https://attacker.example"}).status_code == 403
     assert client.post("/api/missing", headers={"origin": "http://localhost", "x-vr-request": "1"}).status_code == 404
