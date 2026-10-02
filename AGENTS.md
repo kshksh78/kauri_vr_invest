@@ -8,5 +8,6 @@
 - 백테스트 입출금은 달력상 경계 대신 실제 회차 시작일에 적용한다. 휴장으로 미뤄진 시작일 당일의 입금도 포함하며, 실력 종가 미입력으로 대기 중인 운용 회차의 입금은 적용 대기 목록에 유지한다.
 - 가격은 coherent snapshot 기준으로 읽는다. 합성 데이터나 다른 조정 시점의 가격을 실제 백테스트에 조용히 섞지 않는다.
 - raw 파일·DB·백업·계좌 입력·인증정보는 Git에 넣지 않는다.
+- GitHub workflow 파일의 푸시에는 OAuth workflow 권한이 필요하다. Windows gh 인증은 해당 권한이 없고 WSL gh 인증은 이미 보유한 환경일 수 있으므로, 실패 시 기존 인증 범위를 확인한다. CI 파일을 제거하거나 토큰을 출력해 우회하지 않는다.
 - WSL 서비스는 `/home/kauri/hobby/kauri_vr_invest_service`, localhost8787이다. 배포는 `bash scripts/deploy_wsl.sh`로 수행하며 runtime과 venv를 보존한다.
 - 비직관적 판단과 실제 검증 근거는 `docs/solutions/`에 남긴다. 문서 YAML의 module·tags·problem_type으로 관련 지식을 찾는다. 관련 지식은 `docs/solutions/vr-price-basis-and-ledger.md`를 먼저 참고한다.
