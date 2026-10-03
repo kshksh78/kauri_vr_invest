@@ -8,5 +8,6 @@ def test_deployment_preserves_runtime_and_binds_loopback():
     assert "backup(" in script
     assert "--exclude=runtime/" in script
     assert "--exclude=.venv/" in script
-    assert "--host 127.0.0.1 --port 8787" in unit
+    assert "--host 127.0.0.1 --port 39784" in unit
+    assert "http://127.0.0.1:39784/api/health" in script
     assert "Restart=on-failure" in unit
