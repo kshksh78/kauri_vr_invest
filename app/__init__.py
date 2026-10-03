@@ -1,0 +1,1 @@
+"""Local VR investment service."""
