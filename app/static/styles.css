@@ -637,6 +637,48 @@ footer {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+.guide article {
+  scroll-margin-top: 90px;
+}
+.guide p,
+.guide li {
+  line-height: 1.85;
+}
+.guide p {
+  max-width: 90ch;
+}
+.guide li + li {
+  margin-top: 8px;
+}
+.guide h3 {
+  margin-top: 26px;
+}
+.guide a {
+  color: var(--green, #22734f);
+  text-underline-offset: 3px;
+}
+.guide-toc {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+}
+.guide-preference {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px;
+  margin: 20px 0;
+}
+.guide-preference label {
+  max-width: 240px;
+}
+.guide details {
+  margin: 14px 0;
+}
+.guide code {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 760px) {
   .sidebar {
     position: sticky;
@@ -648,6 +690,7 @@ footer {
     align-items: center;
     justify-content: space-between;
     gap: 15px;
+    flex-wrap: wrap;
   }
   .brand {
     font-size: 16px;
