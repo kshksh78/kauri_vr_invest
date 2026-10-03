@@ -54,7 +54,7 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     @application.get("/api/config")
     def config():
         return {"default_symbols": DEFAULT_SYMBOLS, "default_years": 5, "max_years": 10,
-                "default_start": "2026-10-02", "port": 8787}
+                "default_start": "2026-10-02", "port": 39784}
 
     @application.get("/api/portfolios")
     def portfolios():

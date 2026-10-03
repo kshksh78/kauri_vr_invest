@@ -41,7 +41,7 @@ systemctl --user daemon-reload
 systemctl --user enable kauri-vr.service
 systemctl --user restart kauri-vr.service
 for attempt in {1..30}; do
-  if curl --fail --silent http://127.0.0.1:8787/api/health; then
+  if curl --fail --silent http://127.0.0.1:39784/api/health; then
     echo
     exit 0
   fi

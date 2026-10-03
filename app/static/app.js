@@ -30,7 +30,7 @@ const defaults = {
   mode: "skilled",
   g: 10,
   band: 0.15,
-  fee: 0.0005,
+  fee: 0.0025,
   tick: 0.01,
   cycle_days: 14,
   pool_usage: 0.5,
@@ -56,6 +56,9 @@ function recall(key, fallback) {
     return fallback;
   }
 }
+const savedFee = recall("defaultFee", null);
+if (typeof savedFee === "number" && savedFee >= 0 && savedFee < 1)
+  defaults.fee = savedFee;
 function showMessage(id, text) {
   $(id).textContent = text || "";
   $(id).hidden = !text;
@@ -180,8 +183,12 @@ function switchTab(name) {
       "나의 가격 데이터",
       "실제 가격의 기간과 출처를 확인하고 필요한 데이터를 확보하세요.",
     ],
+    help: [
+      "VR 사용 설명",
+      "계좌 만들기부터 예약 주문과 다음 회차까지, 순서대로 알아보세요.",
+    ],
   };
-  if (!titles[name]) name = "operations";
+  if (!Object.hasOwn(titles, name)) name = "operations";
   document
     .querySelectorAll(".page-section")
     .forEach((panel) => (panel.hidden = panel.id !== name));
@@ -193,6 +200,11 @@ function switchTab(name) {
   $("page-title").textContent = titles[name][0];
   $("page-description").textContent = titles[name][1];
   remember("tab", name);
+  if (
+    location.hash.slice(1) !== name &&
+    !(name === "help" && location.hash.startsWith("#guide-"))
+  )
+    history.replaceState(null, "", `#${name}`);
   if (name === "prices")
     loadPrices().catch((error) => showMessage("sync-error", error.message));
 }
@@ -751,9 +763,39 @@ function downloadCsv() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-document
-  .querySelectorAll(".nav-button")
-  .forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+document.querySelectorAll(".nav-button").forEach((b) =>
+  b.addEventListener("click", () => {
+    switchTab(b.dataset.tab);
+    window.scrollTo(0, 0);
+  }),
+);
+function openHashTab() {
+  const target = location.hash.slice(1);
+  switchTab(
+    target.startsWith("guide-")
+      ? "help"
+      : target || recall("tab", "operations"),
+  );
+  if (target.startsWith("guide-")) $(target)?.scrollIntoView();
+}
+window.addEventListener("hashchange", openHashTab);
+$("default-fee-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  defaults.fee = Number($("default-fee").value) / 100;
+  remember("defaultFee", defaults.fee);
+  $("create-fee").value = defaults.fee * 100;
+  $("bt-fee").value = defaults.fee * 100;
+  const previous = recall("backtest", null);
+  if (previous)
+    remember("backtest", {
+      ...previous,
+      settings: { ...previous.settings, fee: defaults.fee },
+    });
+  showMessage(
+    "default-fee-status",
+    "이 브라우저의 새 계좌·백테스트 비용률을 저장했습니다. 기존 계좌와 확정 회차는 변경하지 않았습니다.",
+  );
+});
 $("open-create").addEventListener("click", openCreate);
 $("empty-create").addEventListener("click", openCreate);
 $("close-create").addEventListener(
@@ -999,7 +1041,8 @@ renderEventFields();
 restoreBacktest();
 renderInitialization("create");
 renderInitialization("bt");
-switchTab(recall("tab", "operations"));
+$("default-fee").value = defaults.fee * 100;
+openHashTab();
 (async () => {
   try {
     await api("/api/health");

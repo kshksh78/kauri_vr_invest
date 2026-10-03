@@ -15,6 +15,7 @@ try {
   await page.getByRole("button", { name: "새 계좌" }).click();
   await page.locator("#create-name").fill("브라우저 검증 계좌");
   await page.locator("#create-price").fill("100");
+  await page.locator("#create-fee").fill("0.05");
   await page.locator("#create-start").fill("2026-01-02");
   await page.getByRole("button", { name: "계좌 만들기", exact: true }).click();
   await page
@@ -104,6 +105,7 @@ try {
   await page.locator("#create-price").fill("100");
   await page.locator("#create-start").fill("2026-01-02");
   await page.locator("#create-qty").fill("100");
+  await page.locator("#create-fee").fill("0.05");
   await page.locator("#create-pool").fill("5000");
   await page.locator("#create-periodic_flow").fill("100");
   await page.getByRole("button", { name: "계좌 만들기", exact: true }).click();
