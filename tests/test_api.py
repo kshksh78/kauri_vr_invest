@@ -4,6 +4,38 @@ from app.main import create_app
 from app.prices import save_snapshot
 
 
+def test_delete_account_confirm_revision_and_preserve_other_data(tmp_path):
+    path = tmp_path / "delete.db"
+    save_snapshot(path, "QLD", [{"date": "2026-01-02", "close": 80, "adj_close": 80}],
+                  provider="yahoo", source="fixture")
+    client = TestClient(create_app(path), base_url="http://localhost", headers={"x-vr-request": "1"})
+    data = {"name": "삭제 검증", "symbol": "QLD", "start": "2026-01-02", "price": 80}
+    account = client.post("/api/portfolios", json=data).json()
+    other = client.post("/api/portfolios", json={**data, "name": "보존 검증"}).json()
+    url = f"/api/portfolios/{account['id']}"
+    latest = client.post(url + "/events", json={"revision": 1, "date": "2026-01-05",
+                                             "kind": "flow", "amount": 5000}).json()
+    payload = {"revision": latest["revision"], "confirmation_name": account["name"]}
+    assert client.request("DELETE", url, json={**payload, "revision": 1}).status_code == 409
+    for invalid_revision in [None, True, "2", 2.0]:
+        assert client.request("DELETE", url, json={**payload, "revision": invalid_revision}).status_code == 409
+    assert client.request("DELETE", url, json={**payload, "confirmation_name": "다른 계좌"}).status_code == 422
+    assert client.request("DELETE", url, json=payload, headers={"origin": "https://attacker.example"}).status_code == 403
+    assert client.request("DELETE", url, json=payload, headers={"x-vr-request": "0"}).status_code == 403
+    assert client.get(url).json() == latest
+    response = client.request("DELETE", url, json=payload)
+    assert response.status_code == 200
+    assert response.json() == {"deleted_id": account["id"]}
+    assert client.get(url).status_code == 404
+    assert client.request("DELETE", url, json=payload).status_code == 404
+    assert client.get("/api/portfolios").json() == [other]
+    assert client.get("/api/prices/QLD?start=2026-01-02&end=2026-01-02").json()[0]["close"] == 80
+    # Deletion persists across a new app instance, including the nested ledger.
+    restarted = TestClient(create_app(path), base_url="http://localhost")
+    assert restarted.get(url).status_code == 404
+    assert restarted.get("/api/portfolios").json() == [other]
+
+
 def test_account_lifecycle_and_errors(tmp_path):
     client = TestClient(create_app(tmp_path / "api.db"), base_url="http://localhost",
                         headers={"x-vr-request": "1"})

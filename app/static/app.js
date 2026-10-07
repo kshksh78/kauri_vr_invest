@@ -44,6 +44,9 @@ let account = null,
   toastTimer;
 let accountSelection = 0,
   valuationGeneration = 0;
+const deletedAccountIds = new Set();
+let deleteTarget = null,
+  deletingAccount = false;
 function remember(key, value) {
   try {
     localStorage.setItem(`vr.${key}`, JSON.stringify(value));
@@ -227,13 +230,14 @@ async function loadAccounts() {
   const selection = accountSelection;
   const loaded = await api("/api/portfolios");
   if (selection !== accountSelection) return;
-  portfolios = loaded;
+  portfolios = loaded.filter((p) => !deletedAccountIds.has(p.id));
   const selected = recall("account", null);
   account = portfolios.find((p) => p.id === selected) || portfolios[0] || null;
   renderAccounts();
   renderAccount();
 }
 function applyAccount(value, select = false, selection = accountSelection) {
+  if (deletedAccountIds.has(value.id)) return false;
   const index = portfolios.findIndex((p) => p.id === value.id);
   if (index >= 0 && portfolios[index].revision > value.revision) return false;
   if (index < 0) portfolios.push(value);
@@ -302,6 +306,7 @@ function renderAccount() {
   $("account-empty").hidden = exists;
   $("account-content").hidden = !exists;
   $("reload-account").disabled = !exists;
+  $("delete-account").disabled = !exists || deletingAccount;
   if (!exists) {
     valuationGeneration++;
     return;
@@ -812,10 +817,73 @@ $("account-select").addEventListener("change", () => {
 $("reload-account").addEventListener("click", async () => {
   if (!account) return;
   try {
-    if (await requestAccount(`/api/portfolios/${account.id}`)) cancelEvent();
-    toast("최신 장부를 다시 불러왔습니다.");
+    if (await requestAccount(`/api/portfolios/${account.id}`)) {
+      cancelEvent();
+      toast("최신 장부를 다시 불러왔습니다.");
+    }
   } catch (e) {
     showMessage("global-error", e.message);
+  }
+});
+function syncDeleteConfirmation() {
+  $("confirm-delete-account").disabled =
+    deletingAccount || !deleteTarget || $("delete-account-name").value !== deleteTarget.name;
+}
+$("delete-account").addEventListener("click", () => {
+  if (!account || deletingAccount) return;
+  deleteTarget = { id: account.id, revision: account.revision, name: account.name };
+  $("delete-account-target").textContent =
+    `${account.name} · ${account.symbol} (${account.currency}) · 기록 ${account.events.length}건 · 회차 ${account.cycles.length}개`;
+  $("delete-account-name").value = "";
+  showMessage("delete-account-error", "");
+  syncDeleteConfirmation();
+  $("delete-account-dialog").showModal();
+  $("delete-account-name").focus();
+});
+$("delete-account-name").addEventListener("input", syncDeleteConfirmation);
+$("cancel-delete-account").addEventListener("click", () => $("delete-account-dialog").close());
+$("delete-account-dialog").addEventListener("cancel", (event) => {
+  if (deletingAccount) event.preventDefault();
+});
+$("delete-account-dialog").addEventListener("close", () => {
+  deleteTarget = null;
+  syncDeleteConfirmation();
+});
+$("delete-account-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (deletingAccount || !deleteTarget || $("delete-account-name").value !== deleteTarget.name) return;
+  const target = deleteTarget;
+  deletingAccount = true;
+  $("delete-account-name").disabled = true;
+  $("cancel-delete-account").disabled = true;
+  syncDeleteConfirmation();
+  showMessage("delete-account-error", "");
+  try {
+    await api(`/api/portfolios/${target.id}`, "DELETE", {
+      revision: target.revision,
+      confirmation_name: target.name,
+    });
+    deletedAccountIds.add(target.id);
+    accountSelection++;
+    portfolios = portfolios.filter((p) => p.id !== target.id);
+    if (account?.id === target.id) {
+      account = portfolios[0] || null;
+      remember("account", account?.id || null);
+      cancelEvent();
+    }
+    renderAccounts();
+    renderAccount();
+    $("delete-account-dialog").close();
+    toast(`‘${target.name}’ 계좌와 기록을 삭제했습니다.`);
+  } catch (error) {
+    showMessage("delete-account-error", error.message +
+      (error.status === 409 ? " 삭제하지 않았습니다. 취소 후 ‘새로 불러오기’로 최신 내용을 확인하세요." : ""));
+  } finally {
+    deletingAccount = false;
+    $("delete-account-name").disabled = false;
+    $("cancel-delete-account").disabled = false;
+    $("delete-account").disabled = !account;
+    syncDeleteConfirmation();
   }
 });
 $("create-form").addEventListener("submit", (event) => {
