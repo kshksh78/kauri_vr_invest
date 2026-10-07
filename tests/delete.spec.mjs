@@ -86,8 +86,11 @@ try {
   const returnedGet = page.waitForResponse((response) => response.url().endsWith(account.id)
     && response.request().method() === "GET");
   releaseGet();
-  await returnedGet;
-  await page.waitForFunction((id) => !document.querySelector(`#account-select option[value="${id}"]`), account.id);
+  await (await returnedGet).finished();
+  await page.waitForLoadState("networkidle");
+  assert.equal(await page.locator(`#account-select option[value="${account.id}"]`).count(), 0);
+  assert.equal(await page.locator("#account-name").innerText(), other.name);
+  assert.equal(await page.locator("#toast").innerText(), `‘${name}’ 계좌와 기록을 삭제했습니다.`);
   assert.equal((await page.request.get(`${base}/api/portfolios/${account.id}`)).status(), 404);
   assert.equal(await page.locator("#account-select").inputValue(), other.id);
   const surviving = await (await page.request.get(`${base}/api/portfolios/${other.id}`)).json();

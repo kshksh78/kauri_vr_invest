@@ -817,8 +817,10 @@ $("account-select").addEventListener("change", () => {
 $("reload-account").addEventListener("click", async () => {
   if (!account) return;
   try {
-    if (await requestAccount(`/api/portfolios/${account.id}`)) cancelEvent();
-    toast("최신 장부를 다시 불러왔습니다.");
+    if (await requestAccount(`/api/portfolios/${account.id}`)) {
+      cancelEvent();
+      toast("최신 장부를 다시 불러왔습니다.");
+    }
   } catch (e) {
     showMessage("global-error", e.message);
   }

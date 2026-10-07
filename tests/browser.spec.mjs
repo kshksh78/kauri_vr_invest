@@ -208,10 +208,7 @@ try {
   await page.locator("#event-amount").fill("777");
   releaseAccount();
   await (await delayedAccount).finished();
-  await page
-    .locator("#toast")
-    .filter({ hasText: "다시 불러왔습니다" })
-    .waitFor();
+  await page.waitForLoadState("networkidle");
   assert.equal(
     await page.locator("#account-select").inputValue(),
     otherAccountId,
