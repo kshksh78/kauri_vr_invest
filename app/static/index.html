@@ -53,8 +53,23 @@
           ><button id="open-create" class="button secondary">새 계좌</button
           ><button id="reload-account" class="button quiet">
             새로 불러오기
+          </button><button id="delete-account" class="button danger" disabled>
+            계좌 삭제
           </button>
         </div>
+        <dialog id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description">
+          <form id="delete-account-form">
+            <h2 id="delete-account-title">계좌 삭제 확인</h2>
+            <p id="delete-account-target"></p>
+            <p id="delete-account-description">선택한 계좌의 초기 설정, 모든 거래·입출금·회차 기록을 삭제합니다. 화면에서 되돌릴 수 없습니다. 다른 계좌와 가격 데이터는 유지되며, 증권사 계좌나 실제 주식에는 영향을 주지 않습니다.</p>
+            <label for="delete-account-name">삭제할 계좌명을 그대로 입력하세요<input id="delete-account-name" required autocomplete="off" /></label>
+            <p id="delete-account-error" class="message error" role="alert" hidden></p>
+            <div class="button-row">
+              <button id="cancel-delete-account" type="button" class="button secondary">취소</button>
+              <button id="confirm-delete-account" type="submit" class="button danger" disabled>계좌와 기록 삭제</button>
+            </div>
+          </form>
+        </dialog>
         <section id="create-panel" class="panel" hidden>
           <div class="panel-heading">
             <div>
@@ -1305,6 +1320,10 @@
         </article>
         <article id="guide-faq" class="panel">
           <h2>10. 자주 막히는 부분</h2>
+          <details>
+            <summary>만든 계좌를 삭제하려면?</summary>
+            <p>‘운용 장부’에서 삭제할 계좌를 선택한 뒤 ‘계좌 삭제’를 누릅니다. 계좌명과 종목, 삭제 범위를 확인하고 계좌명을 그대로 입력한 뒤 ‘계좌와 기록 삭제’를 누르세요. 취소하면 기록은 그대로 남습니다. 삭제 후에는 화면에서 되돌릴 수 없습니다. 다른 계좌와 가격 데이터, 증권사 계좌·실제 주식에는 영향을 주지 않습니다.</p>
+          </details>
           <details>
             <summary>증권사 잔고와 Pool이 다릅니다</summary>
             <p>

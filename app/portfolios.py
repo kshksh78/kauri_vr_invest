@@ -238,6 +238,19 @@ class PortfolioStore:
                         (document["revision"], json.dumps(document, allow_nan=False), key))
         return result
 
+    def delete(self, key, revision, confirmation_name):
+        with connect(self.path) as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT document,revision FROM portfolios WHERE id=?", (key,)).fetchone()
+            if row is None:
+                raise KeyError("계좌를 찾을 수 없습니다.")
+            if type(revision) is not int or revision != row["revision"]:
+                raise ValueError("revision 충돌: 계좌를 다시 불러온 뒤 삭제하세요.")
+            if confirmation_name != json.loads(row["document"])["name"]:
+                raise ValueError("삭제 확인을 위해 계좌명을 정확히 입력하세요.")
+            con.execute("DELETE FROM portfolios WHERE id=?", (key,))
+        return {"deleted_id": key}
+
     def update_settings(self, key, settings, revision):
         def change(document):
             document["settings"] = VRSettings.model_validate({**document["settings"], **settings}).model_dump()

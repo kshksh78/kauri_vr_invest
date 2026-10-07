@@ -74,6 +74,10 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     def portfolio(key: str):
         return store.get(key)
 
+    @application.delete("/api/portfolios/{key}")
+    def delete_portfolio(key: str, data: dict):
+        return store.delete(key, data.get("revision"), data.get("confirmation_name"))
+
     @application.patch("/api/portfolios/{key}/settings")
     def settings(key: str, data: dict):
         return store.update_settings(key, data.get("settings", {}), data.get("revision"))

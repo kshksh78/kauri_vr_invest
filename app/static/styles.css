@@ -195,6 +195,7 @@ p {
 }
 .account-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 12px;
   margin-bottom: 26px;
@@ -221,6 +222,30 @@ p {
   background: white;
   border-color: #d1ddd0;
   color: #35593e;
+}
+.danger {
+  background: #fff5f3;
+  border-color: #dfb4ae;
+  color: var(--red);
+}
+.danger:hover:not(:disabled) {
+  background: #fbe5e1;
+}
+#delete-account-dialog {
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+}
+#delete-account-dialog::backdrop {
+  background: rgb(20 35 26 / 45%);
+}
+#delete-account-target {
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .quiet {
   background: transparent;
