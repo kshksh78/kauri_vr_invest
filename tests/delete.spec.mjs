@@ -9,6 +9,9 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
+await page.route("**/api/quotes/*", (route) => route.fulfill({
+  status: 422, contentType: "application/json", body: JSON.stringify({ detail: "테스트 시세 미제공" }),
+}));
 const headers = { "x-vr-request": "1" };
 const name = "계좌 & <삭제 검증>";
 async function openDelete(accountName) {

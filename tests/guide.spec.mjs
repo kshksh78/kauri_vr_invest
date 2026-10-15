@@ -10,6 +10,9 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 const mutations = [];
 page.on("pageerror", (error) => errors.push(error.message));
+await page.route("**/api/quotes/*", (route) => route.fulfill({
+  status: 422, contentType: "application/json", body: JSON.stringify({ detail: "테스트 시세 미제공" }),
+}));
 page.on("request", (request) => {
   if (request.url().includes("/api/") && request.method() !== "GET")
     mutations.push(request.url());

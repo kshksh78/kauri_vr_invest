@@ -11,6 +11,7 @@ from app.backtest import run_backtest
 from app.db import init_db
 from app.portfolios import PortfolioStore
 from app.prices import DEFAULT_SYMBOLS, list_symbols, read_prices, sync_prices
+from app.quotes import fetch_quote
 from app.schemas import VRSettings
 
 
@@ -105,6 +106,10 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     def edit_cycle(key: str, cycle_id: str, data: dict):
         revision = data.pop("revision", None)
         return store.edit_cycle(key, cycle_id, data, revision)
+
+    @application.get("/api/quotes/{symbol}")
+    def latest_quote(symbol: str):
+        return JSONResponse(fetch_quote(symbol), headers={"Cache-Control": "no-store"})
 
     @application.get("/api/prices")
     def price_coverage():

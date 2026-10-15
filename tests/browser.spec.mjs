@@ -9,6 +9,9 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
+await page.route("**/api/quotes/*", (route) => route.fulfill({
+  status: 422, contentType: "application/json", body: JSON.stringify({ detail: "테스트 시세 미제공" }),
+}));
 try {
   await page.goto(base);
   await page.getByRole("heading", { name: "오늘의 VR 운용" }).waitFor();
