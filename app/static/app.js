@@ -43,7 +43,9 @@ let account = null,
   results = [],
   toastTimer;
 let accountSelection = 0,
-  valuationGeneration = 0;
+  valuationGeneration = 0,
+  quoteGeneration = 0;
+const quotes = new Map();
 const deletedAccountIds = new Set();
 let deleteTarget = null,
   deletingAccount = false;
@@ -309,6 +311,7 @@ function renderAccount() {
   $("delete-account").disabled = !exists || deletingAccount;
   if (!exists) {
     valuationGeneration++;
+    quoteGeneration++;
     return;
   }
   const state = account.state,
@@ -409,6 +412,53 @@ function renderAccount() {
     .join("");
   renderCycleForm();
   updateValuation();
+  updateQuote();
+}
+function renderQuote(symbol) {
+  const value = quotes.get(symbol);
+  $("quote-symbol").textContent = symbol;
+  $("quote-price").textContent = value ? num(value.price, 4) : "—";
+  $("quote-currency").textContent = value?.currency || "";
+  $("quote-session").textContent = value
+    ? ({ pre: "장전 시세", regular: "정규장 시세", post: "장후 시세" }[value.session] || "최근 거래")
+    : "시세 대기";
+  const time = (stamp) => new Date(stamp).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul", hour12: false,
+  });
+  $("quote-time").textContent = value
+    ? `시세 기준: ${time(value.as_of)} · 조회: ${time(value.fetched_at)} (한국시간)`
+    : "가격을 조회하면 시세 기준 시각과 조회 시각을 표시합니다.";
+}
+async function updateQuote() {
+  const generation = ++quoteGeneration;
+  const current = account;
+  if (!current) return;
+  const isCurrent = () => generation === quoteGeneration && account?.id === current.id;
+  renderQuote(current.symbol);
+  showMessage("quote-error", "");
+  $("quote-status").textContent = "최신 가격을 조회하고 있습니다…";
+  $("refresh-quote").disabled = true;
+  $("refresh-quote").textContent = "조회 중…";
+  try {
+    const value = await api(`/api/quotes/${encodeURIComponent(current.symbol)}`);
+    if (!isCurrent()) return;
+    quotes.set(current.symbol, value);
+    renderQuote(current.symbol);
+    $("quote-status").textContent = value.currency === current.currency
+      ? "가격 조회 완료"
+      : `시세 통화 ${value.currency}와 계좌 통화 ${current.currency}가 다릅니다.`;
+  } catch (error) {
+    if (!isCurrent()) return;
+    $("quote-status").textContent = quotes.has(current.symbol)
+      ? "갱신 실패 · 이전에 조회한 가격입니다. 시세 기준 시각을 확인하세요."
+      : "최신 가격을 가져오지 못했습니다.";
+    showMessage("quote-error", error.message);
+  } finally {
+    if (isCurrent()) {
+      $("refresh-quote").disabled = false;
+      $("refresh-quote").textContent = "가격 새로고침";
+    }
+  }
 }
 function renderOrders() {
   for (const side of ["buy", "sell"]) {
@@ -825,6 +875,7 @@ $("reload-account").addEventListener("click", async () => {
     showMessage("global-error", e.message);
   }
 });
+$("refresh-quote").addEventListener("click", updateQuote);
 function syncDeleteConfirmation() {
   $("confirm-delete-account").disabled =
     deletingAccount || !deleteTarget || $("delete-account-name").value !== deleteTarget.name;

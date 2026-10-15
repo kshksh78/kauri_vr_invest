@@ -228,6 +228,22 @@
             </div>
             <span id="cycle-badge" class="pill"></span>
           </div>
+          <section class="panel quote-panel" aria-labelledby="quote-heading">
+            <div class="panel-heading">
+              <h2 id="quote-heading">최신 종목 가격</h2>
+              <button id="refresh-quote" type="button" class="button secondary">가격 새로고침</button>
+            </div>
+            <div class="quote-value" aria-live="polite">
+              <span id="quote-symbol" class="pill"></span>
+              <strong id="quote-price">—</strong>
+              <span id="quote-currency"></span>
+              <span id="quote-session" class="pill"></span>
+            </div>
+            <p id="quote-time" class="muted small"></p>
+            <p id="quote-status" class="muted small" role="status"></p>
+            <p id="quote-error" class="message error" role="alert" hidden></p>
+            <p class="muted small">Yahoo Finance 제공 · 지연 가능 · 장전·장후 포함 최근 거래 가격입니다. 확정 종가와 다를 수 있습니다.</p>
+          </section>
           <div class="metrics">
             <article class="metric">
               <span>보유 수량</span><strong id="metric-qty">—</strong

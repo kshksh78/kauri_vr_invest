@@ -278,6 +278,30 @@ p {
 .section-title p {
   margin: 7px 0 0;
 }
+.quote-panel {
+  margin-bottom: 20px;
+}
+.quote-panel h2 {
+  margin: 0;
+}
+.quote-panel .panel-heading {
+  flex-wrap: wrap;
+}
+.quote-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.quote-value strong {
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+#quote-time,
+#quote-error {
+  overflow-wrap: anywhere;
+}
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
